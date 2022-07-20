@@ -7,6 +7,23 @@ import torch
 from metric import accuracy
 
 
+class MLP(nn.Module):
+    def __init__(self, in_feats, h_feats, num_classes):
+        super(MLP, self).__init__()
+        
+        self.mlp1 = nn.Linear(in_features=in_feats, out_features=h_feats)
+        self.mlp2 = nn.Linear(in_features=h_feats, out_features=num_classes)
+        
+    def forward(self, g, x):
+        h = F.relu(self.mlp1(x))
+        h = self.mlp2(h)
+        return h
+    
+    def reset_parameters(self):
+        self.mlp1.reset_parameters()
+        self.mlp2.reset_parameters()
+
+
 class GNN(nn.Module):
     def __init__(self, in_feats, h_feats, num_classes, gnn_type='GCN', num_heads=1, aggre="mean"):
         super(GNN, self).__init__()
@@ -20,7 +37,7 @@ class GNN(nn.Module):
         h = self.conv1(g, in_feat)
         h = F.relu(h)
         h = self.conv2(g, h)
-        h = F.relu(h) # if you use this model as a classifier, you should remove this activation function
+        # h = F.relu(h) # if you use this model as a classifier, you should remove this activation function
         # h = h.squeeze()
         return h
 

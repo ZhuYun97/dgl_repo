@@ -16,8 +16,9 @@ def compute_linkpred_auc(pos_score, neg_score):
     return roc_auc_score(labels, scores)
 
 def accuracy(logits, labels):
+    # print('logits', logits)
     preds = logits.argmax(dim=1)
-    print('p', preds)
-    print('l', labels)
+    # print('p', preds)
+    # print('l', labels)
     acc = (preds == labels).sum() / labels.shape[0]
     return acc.item()

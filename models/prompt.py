@@ -77,7 +77,7 @@ class PromptedGAT(nn.Module):
         self.targets.data = torch.cat((proto, perm_proto))
         torch.nn.init.constant_(self.adapt_weights, val=0.1)
         self.adapt_weights.data[:proto_size] = self.adapt_weights.data[:proto_size]*1
-        self.adapt_weights.data[proto_size:] = self.adapt_weights.data[proto_size:]*(-100)
+        self.adapt_weights.data[proto_size:] = self.adapt_weights.data[proto_size:]*(-1)
 
         # if learnable_proto:
         #     self.proto = torch.nn.Parameter(torch.normal(mean=0, std=0.001, size=(self.prompt_len, self.h_feats))).to(device)

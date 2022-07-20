@@ -5,3 +5,4 @@ __pycache__
 demo.py
 **/.vscode
 **/ipynb_checkpoints
+/models/prompt.py

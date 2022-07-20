@@ -113,3 +113,18 @@ def tsne(h, color, fig_path):
              fontdict={'weight': 'bold', 'size': 9})
     plt.savefig(fig_path, format='svg')
     
+'''transform dense adj into edge index [N,N]->[2, E]'''
+def adj2edges(adj):
+    assert len(adj.shape) ==2 and adj.shape[0] == adj.shape[1]
+    assert adj.max() == 1 and adj.min() == 0
+    
+    node_num = adj.shape[0]
+    
+    source_idx = []
+    target_idx = []
+    for i in range(node_num):
+        for j in range(node_num):
+            if adj[i][j] == 1:
+                source_idx.append(i)
+                target_idx.append(j)
+    return torch.tensor([source_idx, target_idx])
