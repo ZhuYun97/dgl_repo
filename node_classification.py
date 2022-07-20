@@ -63,7 +63,7 @@ def train(g, model, epochs=200, lr=5e-4, weight_decay=5e-4):
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default="Cora", help='Choose dataset [Cora, Citeseer, Pubmed]')
-    parser.add_argument('--gnn-type', type=str, default="GCN", help='Specify the kind of GNN [GCN, GAT, SAGE]')
+    parser.add_argument('--gnn_type', type=str, default="GCN", help='Specify the kind of GNN [GCN, GAT, SAGE]')
     parser.add_argument('--no-cuda', action='store_true', default=False, help='Disables CUDA training.')
     parser.add_argument('--seed', type=int, default=42, help='Random seed.')
     parser.add_argument('--runs', type=int, default=10, help='How many runs of experiments')
@@ -71,7 +71,7 @@ def get_args():
     parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay (L2 loss on parameters).')
     parser.add_argument('--hidden', type=int, default=64, help='Number of hidden units.')
-    parser.add_argument('--nb_heads', type=int, default=8, help='Number of head attentions. (For GAT)')
+    parser.add_argument('--nb_heads', type=int, default=1, help='Number of head attentions. (For GAT)')
     parser.add_argument('--dropout', type=float, default=0.6, help='Dropout rate (1 - keep probability).')
     parser.add_argument('--alpha', type=float, default=0.2, help='Alpha for the leaky_relu.')
     parser.add_argument('--patience', type=int, default=100, help='Patience')
@@ -83,9 +83,9 @@ def get_args():
 if __name__ == '__main__':
     args = get_args()
     set_determinatal(args.seed)
-    dataset = load_dataset(args.dataset)
+    # dataset = load_dataset(args.dataset)
     # dataset = load_sbm_dataset(homo=0.1, num_classes=5, nodes_per_class=100, feat_dim=128, feat_num_per_class=4, degree=10, train_ratio=0.1)
-    # dataset = load_diy_dataset(class_num=5, feat_dim=64, node_num=1000, degree=5, homo=0.1, fea_num_per_class=4, train_ratio=0.1)
+    dataset = load_diy_dataset(class_num=5, feat_dim=64, node_num=200, degree=5, homo=0.5, fea_num_per_class=4, train_ratio=0.1)
 
     print('Number of categories:', dataset.num_classes)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'

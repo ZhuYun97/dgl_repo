@@ -2,7 +2,7 @@ from statistics import mode
 from models.model import GRACE, GNN, LogReg
 from models.prompt import PromptedGAT
 import torch
-from datasets import load_dataset
+from datasets import load_dataset, load_diy_dataset, load_sbm_dataset
 from utils import drop_feature, drop_feat_edge, set_determinatal, tsne
 from tqdm import tqdm
 from metric import accuracy
@@ -22,9 +22,11 @@ def train(g, model, epochs=100, drop_feature_rate_1=0.3, drop_feature_rate_2=0.4
         g_1 = drop_feat_edge(g, drop_feature_rate_1, drop_edge_rate_1)
         g_2 = drop_feat_edge(g, drop_feature_rate_2, drop_edge_rate_2)
         
-        z1 = model(g_1, g_1.ndata['feat'])
-        z2 = model(g_2, g_2.ndata['feat'])
-        loss = model.loss(z1, z2, batch_size=0)
+        l1_z1, l2_z1 = model(g_1, g_1.ndata['feat'])
+        l1_z2, l2_z2 = model(g_2, g_2.ndata['feat'])
+        loss1 = model.loss(l1_z1, l1_z2, batch_size=0)
+        loss2 = model.loss(l2_z1, l2_z2, batch_size=0)
+        loss = loss2
         loss.backward()
         optimizer.step()
         
@@ -64,7 +66,7 @@ def finetune(g, model):
     for i in range(200):
         opt.zero_grad()
         
-        z = model(g, g.ndata['feat'])
+        _,z = model(g, g.ndata['feat'])
         train_embs = z[train_mask]
         val_embs = z[val_mask]
         test_embs = z[test_mask]
@@ -163,14 +165,15 @@ if __name__ == '__main__':
     args = get_args()
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     dataset = load_dataset(args.dataset)
+    # dataset = load_diy_dataset(class_num=5, feat_dim=64, node_num=200, degree=5, homo=0.5, fea_num_per_class=4, train_ratio=0.1)
     g = dataset[0].to(device)
     
     # transform = RowFeatNormalizer(subtract_min=True,
     #                           node_feat_names=['feat'], edge_feat_names=[])
     # g = transform(g)
     
-    # encoder = GNN(g.ndata['feat'].shape[1], args.hidden, args.hidden, gnn_type='GAT')
-    encoder = PromptedGAT(g.ndata['feat'].shape[1], args.hidden, num_classes=dataset.num_classes, prompt_len=0)
+    encoder = GNN(g.ndata['feat'].shape[1], args.hidden, args.hidden, gnn_type='GCN')
+    # encoder = PromptedGAT(g.ndata['feat'].shape[1], args.hidden, num_classes=dataset.num_classes, prompt_len=0)
     model = GRACE(encoder, args.hidden, args.proj_hidden, tau=0.4, learnable_proto=True, num_classes=dataset.num_classes).to(device)
     
     # model.load_state_dict(torch.load('last.pt'))
@@ -184,31 +187,32 @@ if __name__ == '__main__':
         model.reset_parameters()
         model = train(g, model, epochs=args.epochs)
         torch.save(model.state_dict(), "last.pt")
-        test_acc, _ = finetune(g, model)
+        test_acc, _ = test(g, model)
         test_acc_list.append(test_acc)
-        # print(f"RUN {run} test acc:",test_acc)
+        print(f"RUN {run} test acc:",test_acc)
         
-        model.load_state_dict(torch.load('last.pt'))
-        model.train()
+        # model.load_state_dict(torch.load('last.pt'))
+        # model.train()
         # model.init_proto()
-        model.train_proto(g, epochs=50, finetune=True)
-        torch.save(model.state_dict(), "proto_last.pt")
+        # model.train_proto(g, epochs=50, finetune=True)
+        # torch.save(model.state_dict(), "proto_last.pt")
         # proto = model.encoder.proto.cpu()
         # h = model.embed(g, g.ndata['feat'])
         # h = torch.cat((h.cpu(), proto))
         # labels = torch.cat((g.ndata['label'].cpu(), torch.tensor([111111,222222,333333333,4444444,5555555555,66666666,777777])))
         # tsne(h.detach(), labels, 'cora.svg')
         
-        cl_test_acc, _ = finetune(g, model)
-        cl_test_acc_list.append(cl_test_acc)
+        # cl_test_acc, _ = finetune(g, model)
+        # cl_test_acc_list.append(cl_test_acc)
         
-        model.load_state_dict(torch.load('proto_last.pt'))
-        model.encoder.set_prompt_len(dataset.num_classes)
-        pro_test_acc, _ = finetune(g, model)
-        prompt_cl_test_acc_list.append(pro_test_acc)
+        # model.load_state_dict(torch.load('proto_last.pt'))
+        # model.encoder.set_prompt_len(dataset.num_classes)
+        # pro_test_acc, _ = finetune(g, model)
+        # prompt_cl_test_acc_list.append(pro_test_acc)
+        
         # _, _, test_acc = model.predict(g)
-        print("=====adapt weights===", model.encoder.adapt_weights)
-        print(f"RUN {run} test acc: {test_acc} \t cl {cl_test_acc} \t prompt {pro_test_acc}")
+        # print("=====adapt weights===", model.encoder.adapt_weights)
+        # print(f"RUN {run} test acc: {test_acc} \t cl {cl_test_acc} \t prompt {pro_test_acc}")
         
     print(f"ft test acc: {round(np.mean(test_acc_list)*100, 2)} ± {round(np.std(test_acc_list)*100, 2)}")
     print(f"cl test acc: {round(np.mean(cl_test_acc_list)*100, 2)} ± {round(np.std(cl_test_acc_list)*100, 2)}")

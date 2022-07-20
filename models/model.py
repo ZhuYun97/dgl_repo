@@ -35,11 +35,12 @@ class GNN(nn.Module):
 
     def forward(self, g, in_feat):
         h = self.conv1(g, in_feat)
-        h = F.relu(h)
-        h = self.conv2(g, h)
-        # h = F.relu(h) # if you use this model as a classifier, you should remove this activation function
-        # h = h.squeeze()
-        return h
+        h1 = F.relu(h)
+        h2 = self.conv2(g, h1)
+        h2 = F.relu(h2) # if you use this model as a classifier, you should remove this activation function
+        h2 = h2.squeeze()
+        # print(h.shape)
+        return h1, h2
 
     def obtain_gnn(self, gnn_type, in_feats, out_feats, num_heads, aggre):
         gnn_dict = {
@@ -74,7 +75,10 @@ class GRACE(nn.Module):
         self.tau: float = tau
         self.num_classes = num_classes
         
-        self.projector = torch.nn.Sequential(torch.nn.Linear(num_hidden, num_proj_hidden),
+        self.projector1 = torch.nn.Sequential(torch.nn.Linear(num_hidden, num_proj_hidden),
+                                                torch.nn.ReLU(),
+                                                torch.nn.Linear(num_proj_hidden, num_hidden))
+        self.projector2 = torch.nn.Sequential(torch.nn.Linear(num_hidden, num_proj_hidden),
                                                 torch.nn.ReLU(),
                                                 torch.nn.Linear(num_proj_hidden, num_hidden))
         self.learnable_proto = learnable_proto
@@ -98,11 +102,16 @@ class GRACE(nn.Module):
             / (refl_sim.sum(1) + between_sim.sum(1) - refl_sim.diag()))
     
     def loss(self, z1: torch.Tensor, z2: torch.Tensor,
-             mean: bool = True, batch_size: int = 0):
+             mean: bool = True, batch_size: int = 0, layer: int = 1):
         # h1 = self.projection(z1)
         # h2 = self.projection(z2)
-        h1 = self.projector(z1)
-        h2 = self.projector(z2)
+        assert layer in [1,2]
+        if layer == 1:
+            h1 = self.projector1(z1)
+            h2 = self.projector1(z2)
+        else:
+            h1 = self.projector2(z1)
+            h2 = self.projector2(z2)
 
         if batch_size == 0:
             l1 = self.semi_loss(h1, h2)
@@ -117,11 +126,17 @@ class GRACE(nn.Module):
         return ret
     
     def embed(self, g, feat):
-        return self.encoder(g, feat).detach()
+        z = self.encoder(g, feat)
+        if isinstance(z, tuple):
+            _, z = z
+        return z.detach()
     
     def reset_parameters(self):
         self.encoder.reset_parameters()
-        for m in self.projector.modules():
+        for m in self.projector1.modules():
+            if isinstance(m, nn.Linear):
+                m.reset_parameters()
+        for m in self.projector2.modules():
             if isinstance(m, nn.Linear):
                 m.reset_parameters()
                 

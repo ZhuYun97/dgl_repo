@@ -54,12 +54,12 @@ class PromptedGAT(nn.Module):
         else:
             prompts = [self.sources, self.targets, self.adapt_weights]
             # prompts = [self.proto, self.proto, self.adapt_weights]
-        h = self.conv1(g, feat)
-        h = F.relu(h)
-        h = h.squeeze()
-        h = self.conv2(g, h, prompts)
-        h = F.relu(h)
-        return h.squeeze()
+        h1 = self.conv1(g, feat)
+        h1 = F.relu(h1)
+        h1 = h1.squeeze()
+        h2 = self.conv2(g, h1, prompts)
+        h2 = F.relu(h2)
+        return h1, h2.squeeze()
     
     def set_prompt_len(self, prompt_len):
         self.prompt_len = prompt_len
