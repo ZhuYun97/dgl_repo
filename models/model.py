@@ -38,9 +38,9 @@ class GNN(nn.Module):
         h1 = F.relu(h)
         h2 = self.conv2(g, h1)
         h2 = F.relu(h2) # if you use this model as a classifier, you should remove this activation function
-        h2 = h2.squeeze()
+        # h2 = h2.squeeze()
         # print(h.shape)
-        return h1, h2
+        return h1.squeeze(), h2.squeeze()
 
     def obtain_gnn(self, gnn_type, in_feats, out_feats, num_heads, aggre):
         gnn_dict = {
@@ -141,8 +141,10 @@ class GRACE(nn.Module):
                 m.reset_parameters()
                 
         if self.learnable_proto:
-            torch.nn.init.normal_(self.proto, mean=0, std=0.1)
-            torch.nn.init.kaiming_normal_(self.proto, a=0, mode='fan_in', nonlinearity='relu')
+            self.proto1.data.normal_(mean=0, std=0.1)
+            torch.nn.init.kaiming_normal_(self.proto1, a=0, mode='fan_in', nonlinearity='relu')
+            self.proto2.data.normal_(mean=0, std=0.1)
+            torch.nn.init.kaiming_normal_(self.proto2, a=0, mode='fan_in', nonlinearity='relu')
                 
     @staticmethod
     def pcl_sim(x, y):
@@ -150,13 +152,14 @@ class GRACE(nn.Module):
         norm_y = F.normalize(y, dim=-1)
         return torch.matmul(norm_x, norm_y.transpose(1,0))
 
-    def pcl_loss(self, v_ins):
+    def pcl_loss(self, v_ins, layer=2):
+        assert layer in [1,2]
         
         loss = 0.
         num = v_ins.shape[0] # C, num, D
         if self.learnable_proto:
             # instance-prototype loss
-            sim_mat = torch.exp(self.pcl_sim(v_ins, self.proto))
+            sim_mat = torch.exp(self.pcl_sim(v_ins, self.proto1)) if layer == 1 else torch.exp(self.pcl_sim(v_ins, self.proto2))
             num = sim_mat.shape[1]
             
             for i in range(num):
@@ -181,9 +184,12 @@ class GRACE(nn.Module):
 
     def init_proto(self):
         if self.learnable_proto:
-            self.proto = torch.nn.Parameter(torch.normal(mean=0, std=0.1, size=(self.num_classes, self.num_hidden)))
+            self.proto1 = torch.nn.Parameter(torch.normal(mean=0, std=0.1, size=(self.num_classes, self.num_hidden)))
             # self.proto.requires_grad = True
-            torch.nn.init.kaiming_normal_(self.proto, a=0, mode='fan_in', nonlinearity='relu')
+            torch.nn.init.kaiming_normal_(self.proto1, a=0, mode='fan_in', nonlinearity='relu')
+            self.proto2 = torch.nn.Parameter(torch.normal(mean=0, std=0.1, size=(self.num_classes, self.num_hidden)))
+            # self.proto.requires_grad = True
+            torch.nn.init.kaiming_normal_(self.proto2, a=0, mode='fan_in', nonlinearity='relu')
 
     def train_proto(self, data, epochs=200, finetune=False):
         self.train()
@@ -205,30 +211,37 @@ class GRACE(nn.Module):
         test_acc_from_val = 0
         for epoch in range(epochs):
             # obtain node representations
-            embeds = []
+            embeds1 = []
+            embeds2 = []
             if finetune:
-                outputs = self(data, data.ndata['feat'])
+                outputs1, outputs2 = self(data, data.ndata['feat'])
             else:
                 with torch.no_grad():
-                    outputs = self.embed(data, data.ndata['feat'])
+                    outputs1, outputs2 = self.embed(data, data.ndata['feat'])
             train_mask = data.ndata['train_mask']
             masked_train_labels = torch.where(train_mask == 1, data.ndata['label'], -1) # because the train_mask is for all nodes, we should use the train labels for all nodes(nodes have label -1 if they do no belong to trainset)
             zeros = torch.zeros_like(train_mask)
             for c in range(self.num_classes):
                 train_mask_class_c = torch.where(masked_train_labels==c, train_mask, zeros)
-                embeds.append(outputs[train_mask_class_c])
+                embeds1.append(outputs1[train_mask_class_c])
+                embeds2.append(outputs2[train_mask_class_c])
             
-            embeds = torch.stack(embeds)
-            x = self.projector(embeds)
+            embeds1 = torch.stack(embeds1)
+            embeds2 = torch.stack(embeds2)
+            x1 = self.projector1(embeds1)
+            x2 = self.projector2(embeds2)
             optimizer.zero_grad()
-            loss = self.pcl_loss(x)
+            loss1 = self.pcl_loss(x1, layer=1)
+            loss2 = self.pcl_loss(x2, layer=2)
+            loss = 0.5*loss1 +  0.5*loss2
             loss.backward()
             optimizer.step()
         
         if not self.learnable_proto:
-            self.proto = embeds.mean(1)
+            self.proto1 = embeds1.mean(1)
+            self.proto2 = embeds2.mean(1)
         # we shold transfer the prototypes to encoder
-        self.encoder.initialize_prompts(self.proto.detach(), self.num_classes)
+        self.encoder.initialize_prompts(self.proto1.detach(), self.proto2.detach(), self.num_classes)
 
         print("Total epoch: {}. ProtoVerb loss: {}".format(epochs, loss))
         return test_acc_from_val

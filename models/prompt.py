@@ -18,20 +18,25 @@ class PromptedGAT(nn.Module):
         self.num_classes = num_classes
         # if prompt_len != 0:
         #     self.prompt_len = prompt_len
-        self.sources = torch.nn.Parameter(torch.ones(size=(num_classes*2, h_feats)))
-        self.targets = torch.nn.Parameter(torch.ones(size=(num_classes*2, h_feats)))
         
-        self.adapt_weights = torch.nn.Parameter(torch.ones(num_classes*2))
+        self.sources1 = torch.nn.Parameter(torch.ones(size=(num_classes*2, h_feats)))
+        self.targets1 = torch.nn.Parameter(torch.ones(size=(num_classes*2, h_feats)))
+        self.adapt_weights1 = torch.nn.Parameter(torch.ones(num_classes*2))
+        
+        self.sources2 = torch.nn.Parameter(torch.ones(size=(num_classes*2, h_feats)))
+        self.targets2 = torch.nn.Parameter(torch.ones(size=(num_classes*2, h_feats)))
+        self.adapt_weights2 = torch.nn.Parameter(torch.ones(num_classes*2))
         
         self.reset_parameters()
     
     def reset_parameters(self):
         self.conv1.reset_parameters()
         self.conv2.reset_parameters()
-        torch.nn.init.constant_(self.adapt_weights, val=1.)
-        proto_size = self.adapt_weights.shape[0] // 2
-        self.adapt_weights.data[:proto_size] = self.adapt_weights.data[:proto_size]*1
-        self.adapt_weights.data[proto_size:] = self.adapt_weights.data[proto_size:]*(-1)
+        torch.nn.init.constant_(self.adapt_weights1, val=1.)
+        torch.nn.init.constant_(self.adapt_weights2, val=1.)
+        proto_size = self.adapt_weights1.shape[0] // 2
+        self.adapt_weights1.data[:proto_size] = self.adapt_weights1.data[:proto_size]*1
+        self.adapt_weights2.data[proto_size:] = self.adapt_weights2.data[proto_size:]*(-1)
         self.prompt_len = 0 # disable prompt
         
         # we should reinitialzie the prompts, but the train_proto function will overload prompts, so we do not need to reinitialzie them in such a situation
@@ -50,34 +55,42 @@ class PromptedGAT(nn.Module):
     
     def forward(self, g, feat):
         if self.prompt_len == 0:
-            prompts = None
+            prompts1 = prompts2 = None
         else:
-            prompts = [self.sources, self.targets, self.adapt_weights]
+            prompts1 = [self.sources1, self.targets1, self.adapt_weights1]
+            prompts2 = [self.sources2, self.targets2, self.adapt_weights2]
             # prompts = [self.proto, self.proto, self.adapt_weights]
-        h1 = self.conv1(g, feat)
+        h1 = self.conv1(g, feat, prompts1)
         h1 = F.relu(h1)
         h1 = h1.squeeze()
-        h2 = self.conv2(g, h1, prompts)
+        h2 = self.conv2(g, h1, prompts2)
         h2 = F.relu(h2)
         return h1, h2.squeeze()
     
     def set_prompt_len(self, prompt_len):
         self.prompt_len = prompt_len
     
-    def initialize_prompts(self, proto, prompt_len=4):
+    def initialize_prompts(self, proto1, proto2, prompt_len=4):
         # self.prompt_len = prompt_len
         # init_sources = torch.normal(mean=0, std=0.001, size=(self.prompt_len, self.h_feats))
         # init_targets = torch.normal(mean=0, std=0.001, size=(self.prompt_len, self.h_feats))
         # self.sources = torch.nn.Parameter(init_sources).to(device) # different heads use the same prompts
         # self.targets = torch.nn.Parameter(init_targets).to(device)
-        proto_size = proto.shape[0]
+        proto_size = proto1.shape[0]
         perm_idx = torch.cat((torch.arange(1, proto_size), torch.tensor([0])))
-        perm_proto = proto[perm_idx]
-        self.sources.data = torch.cat((proto, proto))
-        self.targets.data = torch.cat((proto, perm_proto))
-        torch.nn.init.constant_(self.adapt_weights, val=0.1)
-        self.adapt_weights.data[:proto_size] = self.adapt_weights.data[:proto_size]*1
-        self.adapt_weights.data[proto_size:] = self.adapt_weights.data[proto_size:]*(-1)
+        perm_proto1 = proto1[perm_idx]
+        self.sources1.data = torch.cat((proto1, proto1))
+        self.targets1.data = torch.cat((proto1, perm_proto1))
+        torch.nn.init.constant_(self.adapt_weights1, val=0.1)
+        self.adapt_weights1.data[:proto_size] = self.adapt_weights1.data[:proto_size]*1
+        self.adapt_weights1.data[proto_size:] = self.adapt_weights1.data[proto_size:]*(-1)
+        
+        perm_proto2 = proto2[perm_idx]
+        self.sources2.data = torch.cat((proto2, proto2))
+        self.targets2.data = torch.cat((proto2, perm_proto2))
+        torch.nn.init.constant_(self.adapt_weights2, val=0.1)
+        self.adapt_weights2.data[:proto_size] = self.adapt_weights2.data[:proto_size]*1
+        self.adapt_weights2.data[proto_size:] = self.adapt_weights2.data[proto_size:]*(-1)
 
         # if learnable_proto:
         #     self.proto = torch.nn.Parameter(torch.normal(mean=0, std=0.001, size=(self.prompt_len, self.h_feats))).to(device)
