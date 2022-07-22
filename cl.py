@@ -46,14 +46,14 @@ def finetune(g, model):
     prompt_params = []
     encoder_params = []
     for n, p in model.named_parameters():
-        if n in ['adapt_weights']:
+        if n in ['adapt_weights1', 'adapt_weights2']:
             # print(n, p.requires_grad)
             prompt_params += [p]
         else:
             encoder_params += [p]
     # params_id = list(map(id, prompt_params)) + list(map(id, encoder_params))
     # other_params = list(filter(lambda p: id(p) not in params_id, all_params))
-    opt = torch.optim.Adam([{'params': encoder_params, 'lr': 1e-4}, {'params': log.parameters(), 'lr': 1e-1}, {'params': prompt_params, 'lr': 1e-3}])
+    opt = torch.optim.Adam([{'params': encoder_params, 'lr': 1e-4}, {'params': log.parameters(), 'lr': 1e-1}, {'params': prompt_params, 'lr': 1e-2}])
     
     train_mask = g.ndata['train_mask']
     val_mask = g.ndata['val_mask']
@@ -173,8 +173,8 @@ if __name__ == '__main__':
     # g = transform(g)
     
     # encoder = GNN(g.ndata['feat'].shape[1], args.hidden, args.hidden, gnn_type='GAT')
-    encoder = PromptedGAT(g.ndata['feat'].shape[1], args.hidden, num_classes=dataset.num_classes, prompt_len=0)
-    model = GRACE(encoder, args.hidden, args.proj_hidden, tau=0.4, learnable_proto=True, num_classes=dataset.num_classes).to(device)
+    # encoder = PromptedGAT(g.ndata['feat'].shape[1], args.hidden, num_classes=dataset.num_classes, prompt_len=0)
+    # model = GRACE(encoder, args.hidden, args.proj_hidden, tau=0.4, learnable_proto=True, num_classes=dataset.num_classes).to(device)
     
     # model.load_state_dict(torch.load('last.pt'))
     # h = model.embed(g, g.ndata['feat'])
@@ -183,35 +183,43 @@ if __name__ == '__main__':
     test_acc_list = []
     cl_test_acc_list = []
     prompt_cl_test_acc_list = []
-    for run in range(10):
-        model.reset_parameters()
+    for run in range(args.runs):
+        # model.reset_parameters()
+        # model.encoder.set_prompt_len(0) # disable prompt
+        encoder = PromptedGAT(g.ndata['feat'].shape[1], args.hidden, num_classes=dataset.num_classes, prompt_len=0)
+        model = GRACE(encoder, args.hidden, args.proj_hidden, tau=0.4, learnable_proto=True, num_classes=dataset.num_classes).to(device)
         model = train(g, model, epochs=args.epochs)
-        torch.save(model.state_dict(), "last.pt")
+        # torch.save(model.state_dict(), "last.pt")
+        
         test_acc, _ = finetune(g, model)
         test_acc_list.append(test_acc)
         # print(f"RUN {run} test acc:",test_acc)
         
-        model.load_state_dict(torch.load('last.pt', map_location=device))
-        model.train()
-        model.train_proto(g, epochs=50, finetune=True)
-        torch.save(model.state_dict(), "proto_last.pt")
+        # model.load_state_dict(torch.load('last.pt', map_location=device))
+        # model.train()
+        # model.train_proto(g, epochs=200, finetune=True)
+        # torch.save(model.state_dict(), "proto_last.pt")
         # proto = model.encoder.proto.cpu()
         # h = model.embed(g, g.ndata['feat'])
         # h = torch.cat((h.cpu(), proto))
         # labels = torch.cat((g.ndata['label'].cpu(), torch.tensor([111111,222222,333333333,4444444,5555555555,66666666,777777])))
         # tsne(h.detach(), labels, 'cora.svg')
         
-        cl_test_acc, _ = finetune(g, model)
-        cl_test_acc_list.append(cl_test_acc)
+        # cl_test_acc, _ = finetune(g, model)
+        # cl_test_acc_list.append(cl_test_acc)
         
-        model.load_state_dict(torch.load('proto_last.pt'))
+        # model.load_state_dict(torch.load('proto_last.pt'))
         model.encoder.set_prompt_len(dataset.num_classes)
-        pro_test_acc, _ = finetune(g, model)
-        prompt_cl_test_acc_list.append(pro_test_acc)
+        # use GAT parameters to initilize mlp, test the performance to verify whether the structure is important?
+        # model.encoder.conv1
+        # model.encoder.conv2
+        # pro_test_acc, _ = finetune(g, model)
+        # prompt_cl_test_acc_list.append(pro_test_acc)
+        # print(f"RUN {run} test acc:", 'prompt acc:', pro_test_acc)
         
         # _, _, test_acc = model.predict(g)
-        # print("=====adapt weights===", model.encoder.adapt_weights)
-        print(f"RUN {run} test acc: {test_acc} \t cl {cl_test_acc} \t prompt {pro_test_acc}")
+        print("=====adapt weights===", model.encoder.adapt_weights1, model.encoder.adapt_weights2)
+        # print(f"RUN {run} test acc: {test_acc} \t cl {cl_test_acc} \t prompt {pro_test_acc}")
         
     print(f"ft test acc: {round(np.mean(test_acc_list)*100, 2)} ± {round(np.std(test_acc_list)*100, 2)}")
     print(f"cl test acc: {round(np.mean(cl_test_acc_list)*100, 2)} ± {round(np.std(cl_test_acc_list)*100, 2)}")

@@ -1,10 +1,10 @@
-from turtle import forward
 from dgl.nn import GraphConv, GATConv, SAGEConv, GINConv
 import torch.nn.functional as F
 import torch.nn as nn
 import dgl.function as fn
 import torch
 from metric import accuracy
+from utils import drop_feat_edge
 
 
 class MLP(nn.Module):
@@ -16,7 +16,7 @@ class MLP(nn.Module):
         
     def forward(self, g, x):
         h = F.relu(self.mlp1(x))
-        h = self.mlp2(h)
+        h = F.relu(self.mlp2(h))
         return h
     
     def reset_parameters(self):
@@ -75,9 +75,7 @@ class GRACE(nn.Module):
         self.tau: float = tau
         self.num_classes = num_classes
         
-        self.projector1 = torch.nn.Sequential(torch.nn.Linear(num_hidden, num_proj_hidden),
-                                                torch.nn.ReLU(),
-                                                torch.nn.Linear(num_proj_hidden, num_hidden))
+        self.projector1 = torch.nn.Sequential(torch.nn.Linear(num_hidden, num_proj_hidden))
         self.projector2 = torch.nn.Sequential(torch.nn.Linear(num_hidden, num_proj_hidden),
                                                 torch.nn.ReLU(),
                                                 torch.nn.Linear(num_proj_hidden, num_hidden))
@@ -197,7 +195,16 @@ class GRACE(nn.Module):
         
         if self.learnable_proto: # prototypes are learnable vectors
             if finetune:
-                optimizer = torch.optim.Adam(self.parameters(), lr=1e-4) # we will finetune the whole model
+                prompt_params = []
+                grace_params = []
+                for n, p in self.named_parameters():
+                    if n in ['proto1', 'proto2']:
+                        # print(n, p.requires_grad)
+                        prompt_params += [p]
+                    else:
+                        grace_params += [p]
+                optimizer = torch.optim.Adam([{'params': grace_params, 'lr': 1e-4}, {'params': prompt_params, 'lr': 1e-3}]) # we will finetune the whole model
+                # optimizer = torch.optim.Adam([{'params': self.parameters(), 'lr': 1e-4}]) # we will finetune the whole model
             else:
                 optimizer = torch.optim.Adam([{'params': self.projector.parameters(), 'lr': 1e-4}, {'params': self.proto, 'lr': 1e-4}])
         else: # prototypes are the mean values of reps which belongs to the same class
@@ -215,6 +222,15 @@ class GRACE(nn.Module):
             embeds2 = []
             if finetune:
                 outputs1, outputs2 = self(data, data.ndata['feat'])
+                
+                g_1 = drop_feat_edge(data, 0.3, 0.2)
+                g_2 = drop_feat_edge(data, 0.4, 0.4)
+                
+                l1_z1, l2_z1 = self(g_1, g_1.ndata['feat'])
+                l1_z2, l2_z2 = self(g_2, g_2.ndata['feat'])
+                loss1 = self.loss(l1_z1, l1_z2, batch_size=0)
+                loss2 = self.loss(l2_z1, l2_z2, batch_size=0)
+                unsupcl_loss = loss1*0.5+loss2*0.5
             else:
                 with torch.no_grad():
                     outputs1, outputs2 = self.embed(data, data.ndata['feat'])
@@ -233,7 +249,8 @@ class GRACE(nn.Module):
             optimizer.zero_grad()
             loss1 = self.pcl_loss(x1, layer=1)
             loss2 = self.pcl_loss(x2, layer=2)
-            loss = 0.5*loss1 +  0.5*loss2
+            supcl_loss = 0.5*loss1 +  0.5*loss2
+            loss = supcl_loss*0.5 + unsupcl_loss*0.5
             loss.backward()
             optimizer.step()
         

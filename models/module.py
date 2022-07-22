@@ -1,3 +1,4 @@
+from audioop import bias
 import torch as th
 from torch import nn
 import torch.nn.functional as F
@@ -176,14 +177,15 @@ class PromptedGATConv(nn.Module):
                     graph.dstdata.update({'bias_er': bias_er[i].unsqueeze(-1)})
                     graph.apply_edges(fn.u_add_v('bias_el', 'bias_er', 'bias_e'))
                     bias_e = graph.edata.pop('bias_e')
+                    b = bias_e
                     # rescale
                     old_max = th.max(bias_e).item()
-                    b = F.softmax(bias_e, dim=0) # we should rescale the bias attention, otherwise the gradient will vanish
+                    b = F.softmax(bias_e/0.4, dim=0) # we should rescale the bias attention, otherwise the gradient will vanish
                     new_max = th.max(b).item()
                     b = b*old_max/new_max # the max value will be bigger and bigger by this way
                     
-                    new_max = th.max(b).item()
-                    b = b*th.max(e).item()/new_max
+                    # new_max = th.max(b).item()
+                    # b = b*th.max(e).item()/new_max
                     # keep the distribution of attention bias similar to  original attention
                     # b_m, b_std = b.mean().item(), b.std().item()
                     # b = (b-b_m)/b_std
@@ -203,9 +205,12 @@ class PromptedGATConv(nn.Module):
                 # bias_e = graph.edata.pop('bias_e')
             
                 e += adapt_bias_attn
+                # e = th.zeros_like(e)
             # print(e.squeeze())
+            e = th.ones_like(e)
             e = self.leaky_relu(e)
             # compute softmax
+            # print(self.attn_drop(edge_softmax(graph, e)).squeeze())
             graph.edata['a'] = self.attn_drop(edge_softmax(graph, e))
             # message passing
             graph.update_all(fn.u_mul_e('ft', 'a', 'm'),

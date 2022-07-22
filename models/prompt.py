@@ -32,8 +32,8 @@ class PromptedGAT(nn.Module):
     def reset_parameters(self):
         self.conv1.reset_parameters()
         self.conv2.reset_parameters()
-        torch.nn.init.constant_(self.adapt_weights1, val=1.)
-        torch.nn.init.constant_(self.adapt_weights2, val=1.)
+        torch.nn.init.constant_(self.adapt_weights1, val=0.01)
+        torch.nn.init.constant_(self.adapt_weights2, val=0.01)
         proto_size = self.adapt_weights1.shape[0] // 2
         self.adapt_weights1.data[:proto_size] = self.adapt_weights1.data[:proto_size]*1
         self.adapt_weights2.data[proto_size:] = self.adapt_weights2.data[proto_size:]*(-1)
@@ -81,14 +81,16 @@ class PromptedGAT(nn.Module):
         perm_proto1 = proto1[perm_idx]
         self.sources1.data = torch.cat((proto1, proto1))
         self.targets1.data = torch.cat((proto1, perm_proto1))
-        torch.nn.init.constant_(self.adapt_weights1, val=0.1)
+        # torch.nn.init.constant_(self.adapt_weights1, val=0.01)
+        torch.nn.init.normal_(self.adapt_weights1, mean=1, std=0.1)
         self.adapt_weights1.data[:proto_size] = self.adapt_weights1.data[:proto_size]*1
         self.adapt_weights1.data[proto_size:] = self.adapt_weights1.data[proto_size:]*(-1)
         
         perm_proto2 = proto2[perm_idx]
         self.sources2.data = torch.cat((proto2, proto2))
         self.targets2.data = torch.cat((proto2, perm_proto2))
-        torch.nn.init.constant_(self.adapt_weights2, val=0.1)
+        # torch.nn.init.constant_(self.adapt_weights2, val=0.01)
+        torch.nn.init.normal_(self.adapt_weights2, mean=1, std=0.1)
         self.adapt_weights2.data[:proto_size] = self.adapt_weights2.data[:proto_size]*1
         self.adapt_weights2.data[proto_size:] = self.adapt_weights2.data[proto_size:]*(-1)
 
