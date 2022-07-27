@@ -207,7 +207,7 @@ class PromptedGATConv(nn.Module):
                 e += adapt_bias_attn
                 # e = th.zeros_like(e)
             # print(e.squeeze())
-            e = th.ones_like(e)
+            # e = th.ones_like(e)
             e = self.leaky_relu(e)
             # compute softmax
             # print(self.attn_drop(edge_softmax(graph, e)).squeeze())

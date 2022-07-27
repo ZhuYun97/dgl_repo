@@ -7,7 +7,7 @@ from utils import drop_feature, drop_feat_edge, set_determinatal, tsne
 from tqdm import tqdm
 from metric import accuracy
 import numpy as np
-from dgl import RowFeatNormalizer
+# from dgl import RowFeatNormalizer
 import argparse
 
 

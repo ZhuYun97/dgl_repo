@@ -74,7 +74,7 @@ augmentation method: randomly masking some edges
 '''
 def drop_edge(g, p=0):
     if p == 0:
-        return g
+        return g.clone()
     dist = Bernoulli(p)
     for c_etype in g.canonical_etypes:
         samples = dist.sample(torch.Size([g.num_edges(c_etype)]))
